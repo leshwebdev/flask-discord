@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, redirect
+from flask import Flask, render_template, request, redirect, jsonify
 from discord_webhook import DiscordWebhook
 import sqlite3
 import time
@@ -24,25 +24,6 @@ load_dotenv()
 #load Discord webhook url, which has been neatly redacted in .gitignore
 uri = os.getenv("DISCORDWEBHOOK_URL")
 
-## Load JSON file
-#with open('products.json') as file:
-#    data = json.load(file)  # Load JSON as Python list
-
-#@app.route('/')
-#def home():
-#    return "Hello, Home Page!"
-
-@app.route('/messages')
-def messages():
-    conn = db_connect()
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM Messages WHERE timestamp >= ?", (thirty_minutes_ago,))
-#    cursor.execute("SELECT * FROM Messages")
-    rows = cursor.fetchall()
-    conn.close()
-    return render_template('messages.html', messages=rows)
-
 def db_connect():
     conn = sqlite3.connect("messages.db")
     conn.row_factory = sqlite3.Row
@@ -61,19 +42,36 @@ def init_db():
     print("DB INIT")
     conn.close()
 
+@app.route('/messages')
+def messages():
+    conn = db_connect()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM Messages WHERE timestamp >= ?", (thirty_minutes_ago,))
+#    cursor.execute("SELECT * FROM Messages")
+    rows = cursor.fetchall()
+    conn.close()
+    return render_template('messages.html', messages=rows)
+
+@app.route('/api/messages')
+def api_messages():
+    conn = db_connect()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM Messages WHERE timestamp >= ?", (thirty_minutes_ago,))
+    rows = cursor.fetchall()
+    conn.close()
+    messages = [dict(row) for row in rows]
+    return jsonify(messages)
+
 @app.route('/add_message', methods=['GET', 'POST'])
 @app.route('/', methods=['GET', 'POST'])
 # this saves the new message to the [local] SQLite3 DB and then publishes to Discord via the webhook
 def add_message():
     if request.method == 'POST':
- #       id = request.form['id']
         content = request.form['content']
         timestamp = int(time.time())
-        conn = db_connect()
-        cursor = conn.cursor()
-        cursor.execute('INSERT INTO messages (content, timestamp) VALUES (?, ?)', (content, timestamp))
-        conn.commit()
-        conn.close()
+        save_to_database(content, timestamp)
         send_to_discord(content)
         return redirect('/messages')
     return '''
@@ -100,17 +98,33 @@ def add_message():
     </html>
     '''
 
+# this is the API route for posting messages
+@app.route('/api/messages', methods=['POST'])
+def api_add_message():
+    data = request.get_json()
+    if not data or 'content' not in data:
+        return jsonify({'error': 'Invalid request, must include "content"'}), 400
+
+    content = data['content']
+    timestamp = int(time.time())
+
+    save_to_database(content, timestamp)
+    send_to_discord(content)
+
+    return jsonify({'status': 'success', 'content': content, 'timestamp': timestamp}), 201
+
+# this saves to the local SQLite3 DB
+def save_to_database(content, timestamp):
+    conn = db_connect()
+    cursor = conn.cursor()
+    cursor.execute('INSERT INTO messages (content, timestamp) VALUES (?, ?)', (content, timestamp))    
+    conn.commit()
+    conn.close()
+
 # this sends the new message to Discord 
 def send_to_discord(text):
     webhook = DiscordWebhook(url=uri, content=text)
     webhook.execute()
-
-def save_to_database(text):
-    conn = db_connect()
-    cursor = conn.cursor()
-    cursor.execute('INSERT INTO messages (content, timestamp) VALUES (?, ?)', (text, datetime.now()))
-    conn.commit()
-    conn.close()
 
 if __name__  == '__main__':
     init_db()
