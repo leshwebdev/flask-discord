@@ -64,9 +64,8 @@ def api_messages():
     messages = [dict(row) for row in rows]
     return jsonify(messages)
 
-@app.route('/add_message', methods=['GET', 'POST'])
-@app.route('/', methods=['GET', 'POST'])
 # this saves the new message to the [local] SQLite3 DB and then publishes to Discord via the webhook
+@app.route('/', methods=['GET', 'POST'])
 def add_message():
     if request.method == 'POST':
         content = request.form['content']
