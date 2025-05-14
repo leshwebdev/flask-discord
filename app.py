@@ -5,7 +5,6 @@ from discord_webhook import DiscordWebhook
 import sqlite3
 import time
 from datetime import datetime
-#import json
 
 app = Flask(__name__)
 
@@ -18,18 +17,19 @@ thirty_minutes_ago = now - (30 * 60)
 def format_timestamp(unix_time):
     return datetime.fromtimestamp(unix_time).strftime('%Y-%m-%d %H:%M:%S')
 
-# Load .env variables
+# Load .env 
 load_dotenv()
 
-#load Discord webhook url, which has been neatly redacted in .gitignore
+# load Discord webhook url, which has been neatly redacted in .gitignore
 uri = os.getenv("DISCORDWEBHOOK_URL")
 
+# connect to the SQLite3 DB
 def db_connect():
     conn = sqlite3.connect("messages.db")
     conn.row_factory = sqlite3.Row
     return conn
 
-# timesatamp will be an integer in UNIX time - might have to convert later on...
+# initialize the SQLite3 DB, creating the "messages" table if !exists
 def init_db():
     conn = db_connect()
     conn.execute("""
@@ -42,17 +42,18 @@ def init_db():
     print("DB INIT")
     conn.close()
 
+# this displays the messages from the last 30 minutes, in the Flask frontend
 @app.route('/messages')
 def messages():
     conn = db_connect()
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM Messages WHERE timestamp >= ?", (thirty_minutes_ago,))
-#    cursor.execute("SELECT * FROM Messages")
     rows = cursor.fetchall()
     conn.close()
     return render_template('messages.html', messages=rows)
 
+# this displays the messages from the last 30 minutes, in the API
 @app.route('/api/messages')
 def api_messages():
     conn = db_connect()
